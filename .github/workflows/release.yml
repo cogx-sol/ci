@@ -1,0 +1,105 @@
+# Reusable semver release workflow.
+#
+# Cuts a v* tag + GitHub release for the calling repo. If HEAD is already the
+# latest released commit (nothing new to ship) it no-ops instead of cutting an
+# empty release — pass force=true to release anyway. Deployment is intentionally
+# NOT included here: the caller chains its own deploy job gated on the
+# `should_release` output, so this stays deploy-target agnostic.
+#
+# Usage (in a consumer repo's .github/workflows/release.yml):
+#
+#   on:
+#     workflow_dispatch:
+#       inputs:
+#         version: { type: string, required: false }
+#         force:   { type: boolean, default: false }
+#   jobs:
+#     release:
+#       uses: cogx-sol/ci/.github/workflows/release.yml@v1
+#       with:
+#         version: ${{ inputs.version }}
+#         force: ${{ inputs.force }}
+#     deploy:
+#       needs: release
+#       if: needs.release.outputs.should_release == 'true'
+#       ...  # your deploy job (e.g. the swa-deploy composite action)
+name: Release (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Explicit version (e.g. 1.4.0). Empty = auto-bump the patch of the latest v* tag.'
+        required: false
+        type: string
+      force:
+        description: 'Release even if there are no new commits since the last release.'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      version:
+        description: 'Released version (no leading v). Empty when skipped.'
+        value: ${{ jobs.tag-release.outputs.version }}
+      should_release:
+        description: "'true' if a release was cut, 'false' if skipped (no changes)."
+        value: ${{ jobs.tag-release.outputs.should_release }}
+
+permissions:
+  contents: write   # push tags + create the GitHub release
+
+jobs:
+  tag-release:
+    name: Create release tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+
+          # Skip if HEAD is already the latest released commit, unless forced.
+          if [ -n "$LATEST" ] && [ "$FORCE" != "true" ]; then
+            if [ "$(git rev-list -n 1 "$LATEST")" = "$GITHUB_SHA" ]; then
+              echo "No new commits since $LATEST ($GITHUB_SHA) — nothing to release."
+              echo "Pass force=true to release anyway." >> "$GITHUB_STEP_SUMMARY"
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="${INPUT_VERSION#v}"
+          elif [ -z "$LATEST" ]; then
+            VERSION="0.1.0"
+          else
+            BASE="${LATEST#v}"
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+            VERSION="${MAJOR:-0}.${MINOR:-0}.$(( ${PATCH:-0} + 1 ))"
+          fi
+          echo "Releasing v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: steps.version.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true

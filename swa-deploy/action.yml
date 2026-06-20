@@ -1,0 +1,84 @@
+name: 'Build & deploy static site to Azure Static Web Apps'
+description: >-
+  Installs dependencies, builds a static site (Next export, Astro, Vite, etc.),
+  and deploys the output to Azure Static Web Apps. Framework-agnostic via inputs.
+  Set framework/public build env vars on the calling job's `env:` — the build
+  step inherits them.
+
+inputs:
+  api_token:
+    description: 'Azure Static Web Apps deployment token.'
+    required: true
+  output_dir:
+    description: 'Built static output directory (e.g. "out" for Next export, "dist" for Astro/Vite).'
+    required: true
+  build_command:
+    description: 'Command that produces the static output.'
+    required: false
+    default: 'npm run build'
+  install_command:
+    description: 'Dependency install command. Defaults are derived from package_manager.'
+    required: false
+    default: ''
+  package_manager:
+    description: 'npm | pnpm | yarn — controls default install command and dependency cache.'
+    required: false
+    default: 'npm'
+  node_version:
+    description: 'Node.js version to set up.'
+    required: false
+    default: '22'
+  deployment_action:
+    description: '"upload" to build + deploy, or "close" to tear down a PR preview (no build).'
+    required: false
+    default: 'upload'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup pnpm
+      if: ${{ inputs.deployment_action == 'upload' && inputs.package_manager == 'pnpm' }}
+      uses: pnpm/action-setup@v4
+
+    - name: Setup Node.js
+      if: ${{ inputs.deployment_action == 'upload' }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node_version }}
+        cache: ${{ inputs.package_manager }}
+
+    - name: Install dependencies
+      if: ${{ inputs.deployment_action == 'upload' }}
+      shell: bash
+      env:
+        PM: ${{ inputs.package_manager }}
+        INSTALL_CMD: ${{ inputs.install_command }}
+      run: |
+        set -euo pipefail
+        if [ -n "$INSTALL_CMD" ]; then
+          eval "$INSTALL_CMD"
+        else
+          case "$PM" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) yarn install --frozen-lockfile ;;
+            *)    npm ci ;;
+          esac
+        fi
+
+    - name: Build
+      if: ${{ inputs.deployment_action == 'upload' }}
+      shell: bash
+      env:
+        BUILD_CMD: ${{ inputs.build_command }}
+      run: |
+        set -euo pipefail
+        eval "$BUILD_CMD"
+
+    - name: Deploy to Azure Static Web Apps
+      uses: Azure/static-web-apps-deploy@v1
+      with:
+        azure_static_web_apps_api_token: ${{ inputs.api_token }}
+        action: ${{ inputs.deployment_action }}
+        app_location: ${{ inputs.output_dir }}   # prebuilt output, uploaded as-is
+        output_location: ''
+        skip_app_build: true
