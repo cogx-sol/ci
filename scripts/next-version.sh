@@ -20,6 +20,8 @@
 #   should_release=true|false
 #   version=<no leading v>      (only when should_release=true)
 #   scheme=semver|calver        (only when should_release=true)
+#   major=vN                    (semver releases only — the moving major tag to
+#                                advance; omitted under calver, which has none)
 #
 # Exit status: 0 on a decision (release or skip), 1 on bad input.
 set -euo pipefail
@@ -48,9 +50,12 @@ else
   #     outsort v1.x forever (2026 > 1), so we also drop calendar-year
   #     majors (>= 2000). Real semver majors stay well under that.
   #   - vYYYYMMDD[.N] calver tags fail the 3-segment shape, so they drop too.
+  # `major + 0` forces a NUMERIC compare. Without the `+0`, sub() leaves `major`
+  # a plain string and `major < 2000` compares lexically — "3" < "2000" is false,
+  # which silently dropped v3..v9 majors (v1/v2 passed only by lexical luck).
   LATEST=$(git tag -l 'v*' --sort=-v:refname \
     | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-    | awk -F. '{ major = $1; sub(/^v/, "", major); if (major < 2000) print }' \
+    | awk -F. '{ major = $1; sub(/^v/, "", major); if (major + 0 < 2000) print }' \
     | head -n1 || true)
 fi
 
@@ -96,3 +101,7 @@ echo "Releasing v${VERSION} (scheme: ${SCHEME})" >&2
 echo "should_release=true"
 echo "version=${VERSION}"
 echo "scheme=${SCHEME}"
+# Moving major tag to advance — semver only (calver has no major line).
+if [ "$SCHEME" = "semver" ]; then
+  echo "major=v${VERSION%%.*}"
+fi
