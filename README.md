@@ -7,7 +7,7 @@ pipeline instead of editing every repo.
 
 | Path | Type | Purpose |
 |---|---|---|
-| [`.github/workflows/release.yml`](.github/workflows/release.yml) | Reusable workflow | Semver tag + GitHub release; skips when nothing changed (`force` to override). Deploy-agnostic — exposes `should_release` / `version` outputs. |
+| [`.github/workflows/release.yml`](.github/workflows/release.yml) | Reusable workflow | Tag + GitHub release, **semver or calver** (`version_scheme`); skips when nothing changed (`force` to override). Deploy-agnostic — exposes `should_release` / `version` outputs. |
 | [`swa-deploy/`](swa-deploy) | Composite action | Build a static site and deploy it to Azure Static Web Apps. |
 
 ## Layout rules (why things live where)
@@ -22,9 +22,34 @@ files under `.github/workflows/`.
 
 ## Versioning
 
-Consumers pin a **major** tag (`@v1`). Releases are tagged `vMAJOR.MINOR.PATCH`
-and the moving `v1` tag is advanced to the latest compatible release. Breaking
-changes bump to `v2`. **Don't pin `@main`.**
+`release.yml` supports two schemes. Pick per call with the `version_scheme`
+input, or repo-wide by setting a `VERSION_SCHEME` repo/org variable (the input
+wins; default is `semver`). A non-empty `version` input overrides either scheme.
+The two schemes filter tags by shape, so their tags never interfere with each
+other's "latest" lookup if a repo switches.
+
+### semver (default — for this repo and other consumed libraries)
+
+Releases are tagged `vMAJOR.MINOR.PATCH`; an empty `version` auto-bumps the patch
+of the latest semver tag. Consumers pin a **major** tag (`@v1`), and the workflow
+advances that moving `v1` tag to each new `v1.x.y` release, so `@v1` keeps getting
+fixes. Breaking changes bump to `v2`. **Don't pin `@main`.**
+
+### calver (for app / deploy repos)
+
+Releases are tagged `vYYYYMMDD`, then `vYYYYMMDD.1`, `vYYYYMMDD.2`, … for further
+releases the same (UTC) day. There's no moving major tag — date tags aren't
+compatibility promises — so consumers pin the exact date tag (or just deploy
+`main`). Enable it on a repo with:
+
+```yaml
+# in the consumer's release.yml job
+with:
+  version_scheme: calver        # or set the VERSION_SCHEME repo variable to "calver"
+```
+
+> This `cogx-sol/ci` repo itself uses **semver** — it's consumed via `@v1`.
+> CalVer is meant for the application repos that consume these building blocks.
 
 ## Putting it together
 

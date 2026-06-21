@@ -82,6 +82,13 @@ assert_error() {
   ok
 }
 
+# assert_major <want>  ("" asserts no major line is emitted)
+assert_major() {
+  local out m; out="$(bash "$SCRIPT" 2>/dev/null)"; m="$(field "$out" major)"
+  [ "$m" = "$1" ] || { bad "major=$m (want '$1')"; return; }
+  ok
+}
+
 # Export every assignment from here on, so `FOO=bar` in a test body reaches the
 # script's child process without an explicit `export` on each line.
 set -a
@@ -144,6 +151,20 @@ assert_release "1.0.1"
 
 case_ "semver: only date tags, no real semver -> first release 0.1.0"
 tag v2026.06.20; commit
+assert_release "0.1.0"
+
+# Regression: the major guard must be a NUMERIC compare, not lexical. v3..v9
+# single-digit majors were silently dropped when it compared strings.
+case_ "semver: single-digit major >2 is kept (v9 numeric-guard regression)"
+tag v9.9.9; commit
+assert_release "9.9.10"
+
+case_ "semver: major just under the 2000 cutoff is kept"
+tag v1999.0.0; commit
+assert_release "1999.0.1"
+
+case_ "semver: calendar-year major at/above 2000 is dropped"
+tag v2000.1.1; commit
 assert_release "0.1.0"
 
 # NOTE: documents the current skip-ordering quirk — the "no new commits" check
@@ -242,6 +263,34 @@ tag v1.0.0
 summary="$(mktemp)"; GITHUB_STEP_SUMMARY="$summary"
 bash "$SCRIPT" >/dev/null 2>&1
 if grep -q "nothing to release" "$summary"; then ok; else bad "no summary note written"; fi
+
+# =============================================================================
+# MAJOR OUTPUT (drives the moving-major-tag advance)
+# =============================================================================
+echo "# major output"
+
+case_ "major: first semver release -> v0"
+assert_major "v0"
+
+case_ "major: semver bump emits the major"
+tag v1.2.0; commit
+assert_major "v1"
+
+case_ "major: high major"
+tag v3.4.5; commit
+assert_major "v3"
+
+case_ "major: derived from explicit version"
+tag v1.0.0; commit; INPUT_VERSION=2.5.0
+assert_major "v2"
+
+case_ "major: calver emits no major line"
+INPUT_SCHEME=calver; CALVER_DATE=20260621
+assert_major ""
+
+case_ "major: calver with explicit version still emits no major"
+INPUT_SCHEME=calver; CALVER_DATE=20260621; tag v20260621; commit; INPUT_VERSION=20260621.4
+assert_major ""
 
 # =============================================================================
 echo
