@@ -1,10 +1,19 @@
-# Reusable semver release workflow.
+# Reusable release workflow (semver or calver).
 #
 # Cuts a v* tag + GitHub release for the calling repo. If HEAD is already the
 # latest released commit (nothing new to ship) it no-ops instead of cutting an
 # empty release — pass force=true to release anyway. Deployment is intentionally
 # NOT included here: the caller chains its own deploy job gated on the
 # `should_release` output, so this stays deploy-target agnostic.
+#
+# Versioning scheme (default semver):
+#   - semver: vMAJOR.MINOR.PATCH, auto-bumps the patch of the latest semver tag.
+#   - calver: vYYYYMMDD for the first release of the day, then vYYYYMMDD.1,
+#             vYYYYMMDD.2, … for further same-day releases.
+# Select per call via the `version_scheme` input, or repo-wide by setting the
+# `VERSION_SCHEME` repo/org variable to "calver". Input wins over the variable.
+# The two schemes filter tags by shape, so they never pollute each other's
+# "latest tag" lookup if a repo ever switches.
 #
 # Usage (in a consumer repo's .github/workflows/release.yml):
 #
@@ -19,6 +28,7 @@
 #       with:
 #         version: ${{ inputs.version }}
 #         force: ${{ inputs.force }}
+#         # version_scheme: calver   # or leave unset for semver / use VERSION_SCHEME var
 #     deploy:
 #       needs: release
 #       if: needs.release.outputs.should_release == 'true'
@@ -29,9 +39,14 @@ on:
   workflow_call:
     inputs:
       version:
-        description: 'Explicit version (e.g. 1.4.0). Empty = auto-bump the patch of the latest v* tag.'
+        description: 'Explicit version (e.g. 1.4.0 or 20260621.1). Empty = derive from version_scheme.'
         required: false
         type: string
+      version_scheme:
+        description: "Versioning scheme: 'semver' or 'calver'. Empty falls back to the VERSION_SCHEME repo variable, then 'semver'."
+        required: false
+        type: string
+        default: ''
       force:
         description: 'Release even if there are no new commits since the last release.'
         required: false
@@ -47,6 +62,13 @@ on:
 
 permissions:
   contents: write   # push tags + create the GitHub release
+
+# Serialize releases per calling repo so two dispatches can't race on tag
+# creation. Queue rather than cancel — cancelling mid-tag-push is worse than
+# waiting.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   tag-release:
@@ -65,44 +87,13 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SCHEME: ${{ inputs.version_scheme }}
+          VAR_SCHEME: ${{ vars.VERSION_SCHEME }}
           FORCE: ${{ inputs.force }}
-        run: |
-          set -euo pipefail
-          # Pick the latest *semver* tag for the patch auto-bump. We must ignore
-          # historical/date-based tags so they can't outsort the semver line:
-          #   - vN.N.N-N suffixed dates (v2026.06.20-1) fail strict semver shape.
-          #   - vYYYY.MM.DD dates (v2026.06.20) ARE shape-valid semver and would
-          #     outsort v1.x forever (2026 > 1), so we also drop calendar-year
-          #     majors (>= 2000). Real semver majors stay well under that.
-          LATEST=$(git tag -l 'v*' --sort=-v:refname \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | awk -F. '{ major = $1; sub(/^v/, "", major); if (major < 2000) print }' \
-            | head -n1)
-
-          # Skip if HEAD is already the latest released commit, unless forced.
-          if [ -n "$LATEST" ] && [ "$FORCE" != "true" ]; then
-            if [ "$(git rev-list -n 1 "$LATEST")" = "$GITHUB_SHA" ]; then
-              echo "No new commits since $LATEST ($GITHUB_SHA) — nothing to release."
-              echo "Pass force=true to release anyway." >> "$GITHUB_STEP_SUMMARY"
-              echo "should_release=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-
-          if [ -n "$INPUT_VERSION" ]; then
-            VERSION="${INPUT_VERSION#v}"
-          elif [ -z "$LATEST" ]; then
-            VERSION="0.1.0"
-          else
-            BASE="${LATEST#v}"
-            MAJOR=$(echo "$BASE" | cut -d. -f1)
-            MINOR=$(echo "$BASE" | cut -d. -f2)
-            PATCH=$(echo "$BASE" | cut -d. -f3)
-            VERSION="${MAJOR:-0}.${MINOR:-0}.$(( ${PATCH:-0} + 1 ))"
-          fi
-          echo "Releasing v${VERSION}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "should_release=true" >> "$GITHUB_OUTPUT"
+        # Logic lives in scripts/next-version.sh so it's unit-tested in CI
+        # (scripts/next-version.test.sh) rather than only exercisable by dispatch.
+        # It prints should_release / version / scheme as GITHUB_OUTPUT lines.
+        run: bash scripts/next-version.sh >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         if: steps.version.outputs.should_release == 'true'
