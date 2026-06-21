@@ -90,11 +90,13 @@ elif [ "$SCHEME" = "calver" ]; then
 elif [ -z "$LATEST" ]; then
   VERSION="0.1.0"
 else
+  # LATEST is guaranteed to match ^v[0-9]+\.[0-9]+\.[0-9]+$ here, so all three
+  # fields are non-empty numbers — no need for default-value fallbacks.
   BASE="${LATEST#v}"
   MAJOR=$(echo "$BASE" | cut -d. -f1)
   MINOR=$(echo "$BASE" | cut -d. -f2)
   PATCH=$(echo "$BASE" | cut -d. -f3)
-  VERSION="${MAJOR:-0}.${MINOR:-0}.$(( ${PATCH:-0} + 1 ))"
+  VERSION="${MAJOR}.${MINOR}.$(( PATCH + 1 ))"
 fi
 
 echo "Releasing v${VERSION} (scheme: ${SCHEME})" >&2
