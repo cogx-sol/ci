@@ -1,0 +1,17 @@
+name: Tests
+on:
+  push:
+    branches: [main]   # post-merge run on main; PRs are covered by pull_request
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  next-version:
+    name: next-version.sh unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run next-version unit tests
+        run: bash scripts/next-version.test.sh
