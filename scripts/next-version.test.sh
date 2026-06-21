@@ -258,6 +258,14 @@ tag v1.0.0; commit
 HEAD_SHA="$(git rev-list -n1 v1.0.0)"
 assert_skip
 
+# Proves the HEAD_SHA -> GITHUB_SHA fallback rung: HEAD_SHA is unset, real git
+# HEAD is ahead of the tag, yet GITHUB_SHA (the var the workflow actually sets)
+# points at the tagged commit, so it must still skip.
+case_ "head_sha: falls back to GITHUB_SHA when HEAD_SHA unset"
+tag v1.0.0; commit
+GITHUB_SHA="$(git rev-list -n1 v1.0.0)"
+assert_skip
+
 case_ "step summary: skip writes a note to GITHUB_STEP_SUMMARY"
 tag v1.0.0
 summary="$(mktemp)"; GITHUB_STEP_SUMMARY="$summary"
