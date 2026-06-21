@@ -68,7 +68,16 @@ jobs:
           FORCE: ${{ inputs.force }}
         run: |
           set -euo pipefail
-          LATEST=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          # Pick the latest *semver* tag for the patch auto-bump. We must ignore
+          # historical/date-based tags so they can't outsort the semver line:
+          #   - vN.N.N-N suffixed dates (v2026.06.20-1) fail strict semver shape.
+          #   - vYYYY.MM.DD dates (v2026.06.20) ARE shape-valid semver and would
+          #     outsort v1.x forever (2026 > 1), so we also drop calendar-year
+          #     majors (>= 2000). Real semver majors stay well under that.
+          LATEST=$(git tag -l 'v*' --sort=-v:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | awk -F. '{ major = $1; sub(/^v/, "", major); if (major < 2000) print }' \
+            | head -n1)
 
           # Skip if HEAD is already the latest released commit, unless forced.
           if [ -n "$LATEST" ] && [ "$FORCE" != "true" ]; then
