@@ -1,6 +1,7 @@
 name: Tests
 on:
   push:
+    branches: [main]   # post-merge run on main; PRs are covered by pull_request
   pull_request:
 
 permissions:
