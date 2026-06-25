@@ -1,0 +1,42 @@
+# Keep the moving major tag (v1, v2, …) pointed at the latest release.
+#
+# Consumers pin the reusable workflows by major tag, e.g.
+#   uses: cogx-sol/ci/.github/workflows/release.yml@v1
+# so a fix only reaches them once `v1` is advanced to the fixed commit. That
+# advance used to be manual — and was missed, leaving every consumer on the
+# original buggy workflow. This automates it: whenever a vX.Y.Z release tag is
+# pushed, force-update vX to the same commit.
+name: Advance major tag
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # immutable semver release tags only
+
+permissions:
+  contents: write   # force-update the moving major tag
+
+jobs:
+  advance:
+    name: Move vN to the new release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Move major tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}   # the pushed tag, e.g. v1.2.3
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          MAJOR="v${REF#v}"; MAJOR="${MAJOR%%.*}"   # v1.2.3 -> v1
+          echo "Pointing ${MAJOR} at ${SHA} (from ${REF})"
+          # Create or force-move the lightweight major tag via the git refs API.
+          if gh api "repos/${REPO}/git/refs/tags/${MAJOR}" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/${REPO}/git/refs/tags/${MAJOR}" \
+              -f sha="${SHA}" -F force=true >/dev/null
+          else
+            gh api -X POST "repos/${REPO}/git/refs" \
+              -f ref="refs/tags/${MAJOR}" -f sha="${SHA}" >/dev/null
+          fi
+          echo "${MAJOR} now points at ${SHA}" >> "$GITHUB_STEP_SUMMARY"
