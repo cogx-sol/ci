@@ -75,7 +75,7 @@ jobs:
     if: needs.release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: cogx-sol/ci/swa-deploy@v1
         with:
           api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
