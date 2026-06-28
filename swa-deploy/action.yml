@@ -38,7 +38,7 @@ runs:
   steps:
     - name: Setup pnpm
       if: ${{ inputs.deployment_action == 'upload' && inputs.package_manager == 'pnpm' }}
-      uses: pnpm/action-setup@v4
+      uses: pnpm/action-setup@v6
 
     - name: Setup Node.js
       if: ${{ inputs.deployment_action == 'upload' }}
