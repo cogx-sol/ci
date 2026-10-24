@@ -26,3 +26,4 @@ jobs:
     with:
       version: ${{ inputs.version }}
       force: ${{ inputs.force }}
+      advance_major_tag: true   # consumers pin @v1

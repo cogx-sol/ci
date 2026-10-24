@@ -52,6 +52,11 @@ on:
         required: false
         type: boolean
         default: false
+      advance_major_tag:
+        description: 'semver only: force-move the major tag (v1) to each new v1.x.y. For repos consumed via @vN, not apps.'
+        required: false
+        type: boolean
+        default: false
     outputs:
       version:
         description: 'Released version (no leading v). Empty when skipped.'
@@ -65,9 +70,11 @@ permissions:
 
 # Serialize releases per calling repo so two dispatches can't race on tag
 # creation. Queue rather than cancel — cancelling mid-tag-push is worse than
-# waiting.
+# waiting. The group name is namespaced: callers commonly use
+# `release-<repo>` for their own top-level concurrency, and a callee sharing the
+# caller's group is a deadlock GitHub resolves by cancelling the run.
 concurrency:
-  group: release-${{ github.repository }}
+  group: cogx-ci-release-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
@@ -118,10 +125,11 @@ jobs:
           generate_release_notes: true
 
       # Advance the moving major tag (v1 -> latest v1.x.y) so consumers pinned at
-      # `@v1` actually receive new releases. semver only — `major` is emitted by
-      # next-version.sh just for the semver scheme, so this is skipped under calver.
+      # `@v1` actually receive new releases. Opt-in via advance_major_tag — app
+      # repos nobody pins don't want a stray force-moved vN tag. semver only —
+      # `major` is emitted by next-version.sh just for the semver scheme.
       - name: Advance moving major tag
-        if: steps.version.outputs.should_release == 'true' && steps.version.outputs.major != ''
+        if: steps.version.outputs.should_release == 'true' && inputs.advance_major_tag && steps.version.outputs.major != ''
         env:
           MAJOR: ${{ steps.version.outputs.major }}
         run: |
