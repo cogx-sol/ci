@@ -8,6 +8,7 @@ pipeline instead of editing every repo.
 | Path | Type | Purpose |
 |---|---|---|
 | [`.github/workflows/release.yml`](.github/workflows/release.yml) | Reusable workflow | Tag + GitHub release, **semver or calver** (`version_scheme`); skips when nothing changed (`force` to override). Deploy-agnostic — exposes `should_release` / `version` outputs. |
+| [`.github/workflows/self-release.yml`](.github/workflows/self-release.yml) | Workflow (this repo only) | Releases `cogx-sol/ci` itself via `release.yml` and advances `v1`. Run it from the Actions tab after merging. |
 | [`swa-deploy/`](swa-deploy) | Composite action | Build a static site and deploy it to Azure Static Web Apps. |
 
 ## Layout rules (why things live where)
@@ -34,6 +35,9 @@ Releases are tagged `vMAJOR.MINOR.PATCH`; an empty `version` auto-bumps the patc
 of the latest semver tag. Consumers pin a **major** tag (`@v1`), and the workflow
 advances that moving `v1` tag to each new `v1.x.y` release, so `@v1` keeps getting
 fixes. Breaking changes bump to `v2`. **Don't pin `@main`.**
+
+`release.yml` checks out this repo's `scripts/` at `v1` when run from a consumer,
+so a `v2` must also update that `ref` in `release.yml`.
 
 ### calver (for app / deploy repos)
 

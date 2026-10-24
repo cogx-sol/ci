@@ -83,6 +83,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The checkout above is the *calling* repo, which doesn't contain our
+      # scripts/ — so fetch cogx-sol/ci itself alongside it. Consumers get the
+      # script from the same major line they pin (bump `v1` with the major);
+      # this repo's own release uses its current commit, so a release never
+      # depends on the previous one having shipped the script.
+      - name: Checkout cogx-sol/ci scripts
+        uses: actions/checkout@v7
+        with:
+          repository: cogx-sol/ci
+          ref: ${{ github.repository == 'cogx-sol/ci' && github.sha || 'v1' }}
+          path: .cogx-ci
+          persist-credentials: false
+
       - name: Determine version
         id: version
         env:
@@ -93,7 +106,7 @@ jobs:
         # Logic lives in scripts/next-version.sh so it's unit-tested in CI
         # (scripts/next-version.test.sh) rather than only exercisable by dispatch.
         # It prints should_release / version / scheme as GITHUB_OUTPUT lines.
-        run: bash scripts/next-version.sh >> "$GITHUB_OUTPUT"
+        run: bash .cogx-ci/scripts/next-version.sh >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         if: steps.version.outputs.should_release == 'true'
