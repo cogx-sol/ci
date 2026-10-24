@@ -42,7 +42,7 @@ runs:
 
     - name: Setup Node.js
       if: ${{ inputs.deployment_action == 'upload' }}
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node_version }}
         cache: ${{ inputs.package_manager }}
@@ -60,7 +60,8 @@ runs:
         else
           case "$PM" in
             pnpm) pnpm install --frozen-lockfile ;;
-            yarn) yarn install --frozen-lockfile ;;
+            # --frozen-lockfile is Yarn 1 only; Yarn 2+ (Berry) renamed it --immutable.
+            yarn) if yarn --version | grep -q '^1\.'; then yarn install --frozen-lockfile; else yarn install --immutable; fi ;;
             *)    npm ci ;;
           esac
         fi

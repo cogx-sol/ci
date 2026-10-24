@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Test bodies set inputs as plain assignments, exported implicitly via `set -a`
+# (SC2034 can't see that), and commit()'s message argument is optional
+# (SC2119/SC2120).
+# shellcheck disable=SC2034,SC2119,SC2120
 # Unit tests for next-version.sh.
 #
 # Each test builds a throwaway git repo, sets the script's env inputs, runs it,

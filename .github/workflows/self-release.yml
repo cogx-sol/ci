@@ -1,0 +1,29 @@
+# Release this repo (cogx-sol/ci) through its own reusable workflow.
+#
+# Cuts the next vX.Y.Z tag + GitHub release and advances the moving major tag
+# (v1) so consumers pinned at `@v1` pick up the change. Calling the workflow via
+# `./` also exercises release.yml end to end on every release of this repo.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Explicit version, e.g. 1.1.0 (optional; default bumps the patch)'
+        type: string
+        required: false
+      force:
+        description: 'Release with no new commits'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # granted to the reusable workflow: push tags + create the release
+
+jobs:
+  release:
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ inputs.version }}
+      force: ${{ inputs.force }}
+      advance_major_tag: true   # consumers pin @v1

@@ -18,6 +18,9 @@ Framework-agnostic (Next export, Astro, Vite, …) via inputs.
 **Build env vars** (e.g. `NEXT_PUBLIC_*`) are not inputs — set them on the calling
 job/step `env:` and the build step inherits them. Checkout the repo before this step.
 
+**pnpm** needs a `"packageManager": "pnpm@x.y.z"` field in `package.json` —
+`pnpm/action-setup` reads the version from it (it fails without one).
+
 ## Production deploy (Next export, pnpm)
 
 ```yaml
